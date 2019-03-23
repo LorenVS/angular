@@ -29,6 +29,7 @@ void main() {
         componentMetadata,
         componentMetadata.template.template,
         component.directives,
+        component.componentBases,
         [],
         null,
         componentMetadata.template.templateUrl);

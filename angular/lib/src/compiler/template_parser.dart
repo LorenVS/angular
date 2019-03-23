@@ -6,7 +6,8 @@ import 'compile_metadata.dart'
     show
         CompileDirectiveMetadata,
         CompileIdentifierMetadata,
-        CompilePipeMetadata;
+        CompilePipeMetadata,
+        ComponentBaseMetadata;
 import 'expression_parser/parser.dart' show Parser;
 import 'parse_util.dart';
 import 'schema/element_schema_registry.dart' show ElementSchemaRegistry;
@@ -29,6 +30,7 @@ class TemplateContext {
   final Parser parser;
   final ElementSchemaRegistry schemaRegistry;
   final List<CompileDirectiveMetadata> directives;
+  final List<ComponentBaseMetadata> componentBases;
   final List<CompileIdentifierMetadata> exports;
   final AstExceptionHandler exceptionHandler;
 
@@ -36,6 +38,7 @@ class TemplateContext {
     this.parser,
     this.schemaRegistry,
     this.directives,
+    this.componentBases,
     this.exports,
     this.exceptionHandler,
   });
@@ -66,6 +69,7 @@ abstract class TemplateParser {
       CompileDirectiveMetadata compMeta,
       String template,
       List<CompileDirectiveMetadata> directives,
+      List<ComponentBaseMetadata> componentBases,
       List<CompilePipeMetadata> pipes,
       String name,
       String templateSourceUrl);

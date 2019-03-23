@@ -270,6 +270,27 @@ class Component extends Directive {
         );
 }
 
+/// Declare a component base type, to be implemented by multiple components.
+///
+/// A `@ComponentBase` class declares a common interface which will be
+/// implemented by multiple concrete component types. This allows an
+/// application to bind against the interface, even if the concrete component
+/// type is only known at runtime. This is useful both for deferred code
+/// loading and for polymorphic user interfaces.
+///
+/// A `@ComponentBase` only declares a selector, a set of inputs, and a
+/// set of outputs. The component is constructed within another template
+/// using the special `@factory` attribute to supply the concrete
+/// [ComponentFactory] which will be used to construct the component.
+class ComponentBase {
+  /// The CSS selector which triggers instantiation of a polymorphic component.
+  ///
+  /// This value should follow all the same constraints as [Directive.selector].
+  final String selector;
+
+  const ComponentBase({@required this.selector});
+}
+
 /// Declare reusable pipe function.
 ///
 /// A "pure" pipe is only re-evaluated when either the input or any of the

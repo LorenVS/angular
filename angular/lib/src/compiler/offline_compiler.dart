@@ -1,5 +1,5 @@
 import 'compile_metadata.dart'
-    show CompileDirectiveMetadata, CompileTypedMetadata, CompilePipeMetadata;
+    show CompileDirectiveMetadata, CompileTypedMetadata, CompilePipeMetadata, ComponentBaseMetadata;
 import 'compiler_utils.dart' show stylesModuleUrl;
 import 'ir/model.dart' as ir;
 import 'output/abstract_emitter.dart' show OutputEmitter;
@@ -23,12 +23,14 @@ class NormalizedComponentWithViewDirectives {
   CompileDirectiveMetadata component;
   List<CompileDirectiveMetadata> directives;
   List<CompileTypedMetadata> directiveTypes;
+  List<ComponentBaseMetadata> componentBases;
   List<CompilePipeMetadata> pipes;
 
   NormalizedComponentWithViewDirectives(
     this.component,
     this.directives,
     this.directiveTypes,
+    this.componentBases,
     this.pipes,
   ) {
     _assertComponent(component);

@@ -60,6 +60,7 @@ class _NormalizedComponentVisitor extends RecursiveElementVisitor<Null> {
       if (directive.isComponent) {
         final directives = _visitDirectives(element);
         final directiveTypes = _visitDirectiveTypes(element);
+        final componentBases = _visitComponentBases(element);
         final pipes = _visitPipes(element);
         _errorOnUnusedDirectiveTypes(
             element, directives, directiveTypes, _exceptionHandler);
@@ -67,6 +68,7 @@ class _NormalizedComponentVisitor extends RecursiveElementVisitor<Null> {
           directive,
           directives,
           directiveTypes,
+          componentBases,
           pipes,
         ));
       } else {
@@ -91,6 +93,14 @@ class _NormalizedComponentVisitor extends RecursiveElementVisitor<Null> {
     return visitAll(values, (value) {
       return typeDeclarationOf(value)
           ?.accept(_ComponentVisitor(_library, _exceptionHandler));
+    });
+  }
+
+  /// Revisits the directives collection looking for component bases.
+  List<ComponentBaseMetadata> _visitComponentBases(ClassElement element) {
+    final values =_getResolvedArgumentsOrFail(element, 'directives');
+    return visitAll(values, (value) {
+      return typeDeclarationOf(value)?.accept(_ComponentBaseVisitor(_library, _exceptionHandler));
     });
   }
 
@@ -799,6 +809,251 @@ void _errorOnUnusedDirectiveTypes(
     if (!used.contains(typed)) {
       exceptionHandler.handle(UnusedDirectiveTypeError(element, directiveType));
     }
+  }
+}
+
+class _ComponentBaseVisitor
+    extends RecursiveElementVisitor<ComponentBaseMetadata> {
+  final _fieldInputs = <String, String>{};
+  final _setterInputs = <String, String>{};
+  final _inputs = <String, String>{};
+  final _inputTypes = <String, CompileTypeMetadata>{};
+  final _outputs = <String, String>{};
+
+  final LibraryReader _library;
+  final ComponentVisitorExceptionHandler _exceptionHandler;
+
+  /// Element of the current directive being visited.
+  ///
+  /// This is used to look up resolved type information.
+  ClassElement _directiveClassElement;
+
+  _ComponentBaseVisitor(this._library, this._exceptionHandler);
+
+  @override
+  ComponentBaseMetadata visitClassElement(ClassElement element) {
+    final annotationInfo =
+        annotationWhere(element, safeMatcher(isComponentBase), _exceptionHandler);
+    if (annotationInfo == null) return null;
+
+    if (element.isPrivate) {
+      log.severe('Component bases must be public: $element');
+      return null;
+    }
+    return _createComponentBaseMetadata(annotationInfo);
+  }
+
+  @override
+  ComponentBaseMetadata visitFieldElement(FieldElement element) {
+    super.visitFieldElement(element);
+    _visitClassMember(
+      element,
+      isGetter: element.getter != null,
+      isSetter: element.setter != null,
+    );
+    return null;
+  }
+
+  @override
+  ComponentBaseMetadata visitPropertyAccessorElement(
+    PropertyAccessorElement element,
+  ) {
+    super.visitPropertyAccessorElement(element);
+    _visitClassMember(
+      element,
+      isGetter: element.isGetter,
+      isSetter: element.isSetter,
+    );
+    return null;
+  }
+
+  void _visitClassMember(
+    Element element, {
+    bool isGetter = false,
+    bool isSetter = false,
+  }) {
+    for (var annotationIndex = 0;
+        annotationIndex < element.metadata.length;
+        annotationIndex++) {
+      final annotation = element.metadata[annotationIndex];
+      final annotationInfo = AnnotationInformation(
+          element, annotation, annotationIndex, _exceptionHandler);
+      if (annotationInfo.isInputType) {
+        if (isSetter && element.isPublic) {
+          final isField = element is FieldElement;
+          // Resolves specified generic type parameters.
+          final setter = _directiveClassElement.type
+              .lookUpInheritedSetter(element.displayName);
+          if (setter.parameters.isEmpty) {
+            _exceptionHandler.handle(ErrorMessageForElement(
+                element, "@Input setter has no parameters."));
+            return;
+          }
+          final propertyType = setter.parameters.first.type;
+          final dynamicType = setter.context.typeProvider.dynamicType;
+          // Resolves unspecified or bounded generic type parameters.
+          final resolvedType = propertyType.resolveToBound(dynamicType);
+          final typeName = getTypeName(resolvedType);
+          _addPropertyBindingTo(
+              isField ? _fieldInputs : _setterInputs, annotation, element,
+              immutableBindings: _inputs);
+          if (typeName != null) {
+            if (isPrimitiveTypeName(typeName)) {
+              _inputTypes[element.displayName] =
+                  CompileTypeMetadata(name: typeName);
+            } else {
+              // Convert any generic type parameters from the input's type to
+              // our internal output AST.
+              final List<o.OutputType> typeArguments =
+                  resolvedType is ParameterizedType
+                      ? resolvedType.typeArguments.map(fromDartType).toList()
+                      : const [];
+              _inputTypes[element.displayName] = CompileTypeMetadata(
+                  moduleUrl: moduleUrl(element),
+                  name: typeName,
+                  typeArguments: typeArguments);
+            }
+          }
+        } else {
+          log.severe('@Input can only be used on a public setter or non-final '
+              'field, but was found on $element.');
+        }
+      } else if (annotationInfo.isOutputType) {
+        if (isGetter && element.isPublic) {
+          _addPropertyBindingTo(_outputs, annotation, element);
+        } else {
+          log.severe('@Output can only be used on a public getter or field, '
+              'but was found on $element.');
+        }
+      }
+    }
+  }
+
+  DartType _fieldOrPropertyType(Element element) {
+    if (element is PropertyAccessorElement && element.isSetter) {
+      return element.parameters.first.type;
+    }
+    if (element is FieldElement) {
+      return element.type;
+    }
+    return null;
+  }
+
+  List<CompileTokenMetadata> _getSelectors(
+      AnnotationInformation annotationInfo) {
+    DartObject value = annotationInfo.constantValue;
+    var selector = getField(value, 'selector');
+    if (isNull(selector)) {
+      _exceptionHandler.handle(ErrorMessageForAnnotation(annotationInfo,
+          'Missing selector argument for "@${value.type.name}"'));
+      return [];
+    }
+    var selectorString = selector?.toStringValue();
+    if (selectorString != null) {
+      return selectorString
+          .split(',')
+          .map((s) => CompileTokenMetadata(value: s))
+          .toList();
+    }
+    var selectorType = selector.toTypeValue();
+    if (selectorType == null) {
+      // NOTE(deboer): This code is untested and probably unreachable.
+      _exceptionHandler.handle(ErrorMessageForAnnotation(
+          annotationInfo,
+          'Only a value of `String` or `Type` for "@${value.type.name}" is '
+          'supported'));
+      return [];
+    }
+    return [
+      CompileTokenMetadata(
+        identifier: CompileIdentifierMetadata(
+          name: selectorType.name,
+          moduleUrl: moduleUrl(selectorType.element),
+        ),
+      ),
+    ];
+  }
+
+  static final _coreIterable = TypeChecker.fromUrl('dart:core#Iterable');
+  static final _htmlElement = TypeChecker.fromUrl('dart:html#Element');
+
+  /// Adds a property binding for [element] to [bindings].
+  ///
+  /// The property binding maps [element]'s display name to a binding name. By
+  /// default, [element]'s name is used as the binding name. However, if
+  /// [annotation] has a `bindingPropertyName` field, its value is used instead.
+  ///
+  /// Property bindings are immutable by default, to prevent derived classes
+  /// from overriding inherited binding names. The optional [immutableBindings]
+  /// may be provided to restrict a different set of property bindings than
+  /// [bindings].
+  void _addPropertyBindingTo(
+    Map<String, String> bindings,
+    ElementAnnotation annotation,
+    Element element, {
+    Map<String, String> immutableBindings,
+  }) {
+    final value = annotation.computeConstantValue();
+    final propertyName = element.displayName;
+    final bindingName =
+        coerceString(value, 'bindingPropertyName', defaultTo: propertyName);
+    _prohibitBindingChange(element.enclosingElement as ClassElement,
+        propertyName, bindingName, immutableBindings ?? bindings);
+    bindings[propertyName] = bindingName;
+  }
+
+  /// Collects inheritable metadata declared on [element].
+  void _collectInheritableMetadataOn(ClassElement element) {
+    // Skip 'Object' since it can't have metadata and we only want to record
+    // whether a user type implements 'noSuchMethod'.
+    if (element.type.isObject) return;
+    // Collect metadata from field and property accessor annotations.
+    super.visitClassElement(element);
+    // Merge field and setter inputs, so that a derived field input binding is
+    // not overridden by an inherited setter input.
+    _inputs..addAll(_fieldInputs)..addAll(_setterInputs);
+    _fieldInputs..clear();
+    _setterInputs..clear();
+  }
+
+  /// Collects inheritable metadata from [element] and its supertypes.
+  void _collectInheritableMetadata(ClassElement element) {
+    // Reverse supertypes to traverse inheritance hierarchy from top to bottom
+    // so that derived bindings overwrite their inherited definition.
+    for (var type in element.allSupertypes.reversed) {
+      _collectInheritableMetadataOn(type.element);
+    }
+    _collectInheritableMetadataOn(element);
+  }
+
+  ComponentBaseMetadata _createComponentBaseMetadata(
+      AnnotationInformation<ClassElement> annotationInfo) {
+    final element = annotationInfo.element;
+
+    _directiveClassElement = element;
+    _collectInheritableMetadata(element);
+    final annotationValue = annotationInfo.constantValue;
+
+    if (annotationInfo.hasErrors) {
+      _exceptionHandler.handle(AngularAnalysisError(
+          annotationInfo.constantEvaluationErrors, annotationInfo));
+      return null;
+    }
+
+    final selector = coerceString(annotationValue, 'selector');
+    if (selector == null || selector.isEmpty) {
+      _exceptionHandler.handle(ErrorMessageForAnnotation(
+        annotationInfo,
+        'Selector is required, got "$selector"',
+      ));
+    }
+
+    return ComponentBaseMetadata(
+      selector: coerceString(annotationValue, 'selector'),
+      inputs: _inputs,
+      inputTypes: _inputTypes,
+      outputs: _outputs,
+    );
   }
 }
 

@@ -66,7 +66,7 @@ class AngularCompiler {
     final normalizedDirs = await Future.wait(
         component.directives.map(_directiveNormalizer.normalizeDirective));
     return NormalizedComponentWithViewDirectives(normalizedComp, normalizedDirs,
-        component.directiveTypes, component.pipes);
+        component.directiveTypes, component.componentBases, component.pipes);
   }
 
   ir.Component _convertToIR(
@@ -100,6 +100,7 @@ class AngularCompiler {
       componentWithDirs.component,
       componentWithDirs.component.template.template,
       componentWithDirs.directives,
+      componentWithDirs.componentBases,
       componentWithDirs.pipes,
       componentWithDirs.component.type.name,
       componentWithDirs.component.template.templateUrl,
@@ -118,6 +119,7 @@ class AngularCompiler {
       hostMeta,
       hostMeta.template.template,
       [component],
+      [],
       [],
       hostMeta.type.name,
       hostMeta.template.templateUrl,

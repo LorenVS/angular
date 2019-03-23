@@ -57,6 +57,7 @@ class AstTemplateParser implements TemplateParser {
       CompileDirectiveMetadata compMeta,
       String template,
       List<CompileDirectiveMetadata> directives,
+      List<ComponentBaseMetadata> componentBases,
       List<CompilePipeMetadata> pipes,
       String name,
       String templateSourceUrl) {
@@ -76,7 +77,7 @@ class AstTemplateParser implements TemplateParser {
     );
     exceptionHandler.maybeReportExceptions();
 
-    final providedAsts = _bindDirectivesAndProviders(directives, compMeta,
+    final providedAsts = _bindDirectivesAndProviders(directives, componentBases, compMeta,
         filteredAst, exceptionHandler, parsedAst.first.sourceSpan);
     exceptionHandler.maybeReportExceptions();
 
@@ -114,12 +115,13 @@ class AstTemplateParser implements TemplateParser {
 
   List<ng.TemplateAst> _bindDirectivesAndProviders(
       List<CompileDirectiveMetadata> directives,
+      List<ComponentBaseMetadata> componentBases,
       CompileDirectiveMetadata compMeta,
       List<ast.TemplateAst> filteredAst,
       AstExceptionHandler exceptionHandler,
       SourceSpan span) {
     final boundAsts =
-        _bindDirectives(directives, compMeta, filteredAst, exceptionHandler);
+        _bindDirectives(directives, componentBases, compMeta, filteredAst, exceptionHandler);
     return _bindProviders(compMeta, boundAsts, span, exceptionHandler);
   }
 
@@ -147,6 +149,7 @@ class AstTemplateParser implements TemplateParser {
 
   List<ng.TemplateAst> _bindDirectives(
       List<CompileDirectiveMetadata> directives,
+      List<ComponentBaseMetadata> componentBases,
       CompileDirectiveMetadata compMeta,
       List<ast.TemplateAst> filteredAst,
       AstExceptionHandler exceptionHandler) {
@@ -155,6 +158,7 @@ class AstTemplateParser implements TemplateParser {
       parser: parser,
       schemaRegistry: schemaRegistry,
       directives: removeDuplicates(directives),
+      componentBases: removeDuplicates(componentBases),
       exports: compMeta.exports,
       exceptionHandler: exceptionHandler,
     );
@@ -578,7 +582,7 @@ class _ParseContext {
       ast.ElementAst element, _ParseContext parent) {
     var templateContext = parent.templateContext;
     var boundDirectives = _toAst(
-        _matchElementDirectives(templateContext.directives, element),
+        _matchElementDirectives(templateContext.directives, templateContext.componentBases, element),
         element.sourceSpan,
         element.name,
         _location(element),
@@ -605,7 +609,7 @@ class _ParseContext {
       ast.EmbeddedTemplateAst template, _ParseContext parent) {
     var templateContext = parent.templateContext;
     var boundDirectives = _toAst(
-        _matchTemplateDirectives(templateContext.directives, template),
+        _matchTemplateDirectives(templateContext.directives, [], template),
         template.sourceSpan,
         _templateElement,
         _location(template),

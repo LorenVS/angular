@@ -639,6 +639,28 @@ List<CompileTypedMetadata> createHostDirectiveTypes(
   ];
 }
 
+
+/// Metadata regarding a base component type.
+/// 
+/// Base component types are used for polymorphic templates. They do not
+/// require any compilation of themselves, but knowledge of them is
+/// necessary for the compilation of views which contain them.
+class ComponentBaseMetadata {
+  final String selector;
+  final Map<String, String> inputs;
+  final Map<String, CompileTypeMetadata> inputTypes;
+  final Map<String, String> outputs;
+  final AnalyzedClass analyzedClass;
+
+  ComponentBaseMetadata({
+    this.selector,
+    this.inputs,
+    this.inputTypes,
+    this.outputs,
+    this.analyzedClass});
+}
+
+
 class CompilePipeMetadata implements CompileMetadataWithType {
   @override
   final CompileTypeMetadata type;

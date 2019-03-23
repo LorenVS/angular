@@ -28,6 +28,7 @@ const someModuleUrl = 'package:someModule';
 typedef List<TemplateAst> ParseTemplate(
   String template,
   List<CompileDirectiveMetadata> directives, [
+  List<ComponentBaseMetadata> componentBases,
   List<CompilePipeMetadata> pipes,
 ]);
 
@@ -80,9 +81,10 @@ void main() {
   parse(
     String template, [
     List<CompileDirectiveMetadata> directive,
+    List<ComponentBaseMetadata> componentBases,
     List<CompilePipeMetadata> pipes,
   ]) {
-    return runZoned(() => _parse(template, directive, pipes), zoneValues: {
+    return runZoned(() => _parse(template, directive, componentBases, pipes), zoneValues: {
       #buildLog: Logger.root,
     });
   }
@@ -95,10 +97,11 @@ void main() {
       Parser(Lexer()),
       CompilerFlags(),
     );
-    _parse = (template, [directives, pipes]) => parser.parse(
+    _parse = (template, [directives, componentBases, pipes]) => parser.parse(
         component,
         template,
         directives ?? [],
+        componentBases ?? [],
         pipes ?? [],
         'TestComp',
         'path://to/test-comp');
@@ -2234,7 +2237,7 @@ void main() {
           type: CompileTypeMetadata(moduleUrl: someModuleUrl, name: 'DirA'),
         );
         // Should not throw.
-        parse('{{a | test}}', [], [testPipe]);
+        parse('{{a | test}}', [], [], [testPipe]);
       });
 
       test(
@@ -2257,7 +2260,7 @@ void main() {
           type: CompileTypeMetadata(moduleUrl: someModuleUrl, name: 'DirA'),
         );
         expect(
-            () => parse('{{a | test:12}}', [], [testPipe]),
+            () => parse('{{a | test:12}}', [], [], [testPipe]),
             throwsWith(
                 'line 1, column 1 of path://to/test-comp: ParseErrorLevel.FATAL: The pipe '
                 "'test' was invoked with too many arguments: 0 expected, but 1 "
